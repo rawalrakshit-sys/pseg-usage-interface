@@ -642,9 +642,17 @@ class PSEGScraper:
             
             usage_endpoints = [
                 "https://nj.myaccount.pseg.com/api/usage/history",
-                "https://nj.myaccount.pseg.com/usage/data",
+                "https://nj.myaccount.pseg.com/usage/data", 
                 "https://nj.pseg.com/api/usage",
-                "https://nj.myaccount.pseg.com/myaccountdashboard/usage"
+                "https://nj.myaccount.pseg.com/myaccountdashboard/usage",
+                "https://nj.myaccount.pseg.com/api/account/usage",
+                "https://nj.myaccount.pseg.com/api/billing/usage",
+                "https://nj.myaccount.pseg.com/api/customer/usage",
+                "https://nj.myaccount.pseg.com/api/v1/usage",
+                "https://nj.myaccount.pseg.com/api/v2/usage",
+                "https://nj.myaccount.pseg.com/services/usage",
+                "https://nj.myaccount.pseg.com/rest/usage",
+                "https://nj.myaccount.pseg.com/webapi/usage"
             ]
             
             for endpoint in usage_endpoints:
@@ -675,6 +683,22 @@ class PSEGScraper:
                                 return usage_data
                             else:
                                 print("No usage data found in HTML content")
+                                api_endpoints = self._extract_api_endpoints_from_html(response.text)
+                                if api_endpoints:
+                                    print(f"Found potential API endpoints in HTML: {api_endpoints}")
+                                    for api_endpoint in api_endpoints[:3]:  # Try first 3
+                                        try:
+                                            api_response = self.session.get(api_endpoint, timeout=10)
+                                            print(f"API endpoint {api_endpoint} status: {api_response.status_code}")
+                                            if api_response.status_code == 200 and 'json' in api_response.headers.get('content-type', ''):
+                                                api_data = api_response.json()
+                                                print(f"Found JSON data from {api_endpoint}: {list(api_data.keys()) if isinstance(api_data, dict) else 'not a dict'}")
+                                                if isinstance(api_data, dict):
+                                                    parsed_data = self._parse_usage_json(api_data)
+                                                    if parsed_data:
+                                                        return parsed_data
+                                        except Exception as api_error:
+                                            print(f"API endpoint {api_endpoint} failed: {api_error}")
                                 
                 except Exception as e:
                     print(f"Usage endpoint {endpoint} failed: {e}")
@@ -754,6 +778,38 @@ class PSEGScraper:
             print(f"Error extracting usage from item: {e}")
             
         return None
+    
+    def _extract_api_endpoints_from_html(self, html: str) -> List[str]:
+        """Extract potential API endpoints from HTML JavaScript code"""
+        import re
+        api_endpoints = []
+        
+        patterns = [
+            r'["\']([^"\']*api[^"\']*usage[^"\']*)["\']',
+            r'["\']([^"\']*usage[^"\']*api[^"\']*)["\']',
+            r'["\']([^"\']*\/api\/[^"\']*)["\']',
+            r'["\']([^"\']*\/services\/[^"\']*)["\']',
+            r'["\']([^"\']*\/rest\/[^"\']*)["\']',
+            r'["\']([^"\']*\/webapi\/[^"\']*)["\']',
+            r'url\s*:\s*["\']([^"\']*api[^"\']*)["\']',
+            r'endpoint\s*:\s*["\']([^"\']*)["\']'
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, html, re.IGNORECASE)
+            for match in matches:
+                if match.startswith('/'):
+                    full_url = f"https://nj.myaccount.pseg.com{match}"
+                elif match.startswith('http'):
+                    full_url = match
+                else:
+                    full_url = f"https://nj.myaccount.pseg.com/{match}"
+                
+                if any(keyword in full_url.lower() for keyword in ['usage', 'billing', 'account', 'customer', 'consumption']):
+                    if full_url not in api_endpoints:
+                        api_endpoints.append(full_url)
+        
+        return api_endpoints[:10]  # Return first 10 unique endpoints
     
     def _parse_usage_html(self, html: str) -> List[UsageData]:
         """Parse usage data from HTML response"""
