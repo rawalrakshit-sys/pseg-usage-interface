@@ -204,14 +204,33 @@ class PSEGScraper:
             return False
     
     def _process_oauth_flow(self, username: str, password: str, auth_response) -> bool:
-        """Process OAuth2 authentication flow"""
+        """Process OAuth2 authentication flow with detailed logging"""
         try:
-            soup = BeautifulSoup(auth_response.text, 'html.parser')
+            print(f"Step 5: Processing OAuth flow from URL: {auth_response.url}")
+            print(f"Step 6: Response status: {auth_response.status_code}")
             
+            soup = BeautifulSoup(auth_response.text, 'html.parser')
             forms = soup.find_all('form')
             
-            for form in forms:
+            print(f"Step 7: Found {len(forms)} forms on OAuth page")
+            
+            if not forms:
+                print("Step 8: No forms found - checking for JavaScript redirects...")
+                scripts = soup.find_all('script')
+                for script in scripts:
+                    if script.string and ('login' in script.string.lower() or 'auth' in script.string.lower()):
+                        print(f"Found auth-related JavaScript: {script.string[:200]}...")
+                return False
+            
+            for i, form in enumerate(forms):
+                print(f"Step 8.{i+1}: Processing form {i+1}")
+                
                 action = form.get('action', '')
+                method = form.get('method', 'POST').upper()
+                
+                print(f"  Form action: {action}")
+                print(f"  Form method: {method}")
+                
                 if action.startswith('/'):
                     action = 'https://nj.pseg.com' + action
                 elif not action.startswith('http'):
@@ -220,43 +239,88 @@ class PSEGScraper:
                 
                 form_data = {}
                 
-                for hidden_input in form.find_all('input', {'type': 'hidden'}):
-                    name = hidden_input.get('name')
-                    value = hidden_input.get('value', '')
-                    if name:
-                        form_data[name] = value
+                all_inputs = form.find_all('input')
+                print(f"  Found {len(all_inputs)} input fields")
                 
-                username_input = (form.find('input', {'name': 'identifier'}) or
-                                form.find('input', {'name': 'username'}) or  
-                                form.find('input', {'name': 'email'}))
-                
-                if username_input:
-                    form_data[username_input.get('name')] = username
-                
-                password_input = (form.find('input', {'name': 'credentials.passcode'}) or
-                                form.find('input', {'name': 'password'}))
-                
-                if password_input:
-                    form_data[password_input.get('name')] = password
-                
-                if form_data:
-                    print(f"Submitting OAuth form to: {action}")
-                    oauth_response = self.session.post(action, data=form_data, timeout=15)
+                for inp in all_inputs:
+                    inp_type = inp.get('type', 'text')
+                    inp_name = inp.get('name', '')
+                    inp_value = inp.get('value', '')
                     
-                    if self._check_authentication_success(oauth_response):
-                        return True
+                    print(f"    Input: name='{inp_name}', type='{inp_type}', value='{inp_value[:50]}...'")
+                    
+                    if inp_type == 'hidden' and inp_name:
+                        form_data[inp_name] = inp_value
+                    elif inp_type in ['text', 'email'] and inp_name and any(keyword in inp_name.lower() for keyword in ['user', 'email', 'login', 'identifier']):
+                        form_data[inp_name] = username
+                        print(f"    -> Set username field '{inp_name}' = '{username}'")
+                    elif inp_type == 'password' and inp_name:
+                        form_data[inp_name] = password
+                        print(f"    -> Set password field '{inp_name}' = '[HIDDEN]'")
+                
+                if len(form_data) >= 2:  # At least username and password
+                    print(f"Step 9: Submitting form with {len(form_data)} fields to: {action}")
+                    print(f"  Form data keys: {list(form_data.keys())}")
+                    
+                    try:
+                        if method == 'GET':
+                            oauth_response = self.session.get(action, params=form_data, timeout=15)
+                        else:
+                            oauth_response = self.session.post(action, data=form_data, timeout=15)
+                        
+                        print(f"Step 10: Form submission response: {oauth_response.status_code}")
+                        print(f"Step 11: Final URL after submission: {oauth_response.url}")
+                        
+                        success = self._check_authentication_success(oauth_response)
+                        print(f"Step 12: Authentication success check result: {success}")
+                        
+                        if success:
+                            return True
+                        else:
+                            print("Step 13: Authentication failed, trying next form...")
+                            
+                    except Exception as submit_error:
+                        print(f"Form submission error: {submit_error}")
+                        continue
+                else:
+                    print(f"  Skipping form - insufficient fields (found {len(form_data)})")
             
+            print("Step 14: All forms processed, authentication failed")
             return False
             
         except Exception as e:
             print(f"OAuth flow processing failed: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def _check_authentication_success(self, response) -> bool:
-        """Check if authentication was successful"""
+        """Check if authentication was successful with detailed logging"""
         try:
             final_url = getattr(response, 'url', '')
             response_text = response.text.lower()
+            
+            print(f"=== Authentication Success Check ===")
+            print(f"Status Code: {response.status_code}")
+            print(f"Final URL: {final_url}")
+            print(f"Response length: {len(response.text)} chars")
+            
+            error_indicators = [
+                'error' in response_text,
+                'invalid' in response_text,
+                'incorrect' in response_text,
+                'failed' in response_text,
+                'denied' in response_text,
+                'unauthorized' in response_text,
+                response.status_code >= 400
+            ]
+            
+            has_errors = any(error_indicators)
+            print(f"Has error indicators: {has_errors}")
+            
+            if has_errors:
+                print("Authentication failed due to error indicators")
+                return False
             
             success_indicators = [
                 'myaccount' in final_url.lower(),
@@ -265,7 +329,8 @@ class PSEGScraper:
                 'welcome' in response_text and 'login' not in response_text,
                 'usage' in response_text and 'energy' in response_text,
                 'billing' in response_text and 'account' in response_text,
-                response.status_code in [200, 302] and 'error' not in response_text
+                'profile' in response_text and 'account' in response_text,
+                response.status_code in [200, 302]
             ]
             
             failure_indicators = [
