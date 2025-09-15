@@ -343,7 +343,7 @@ async def test_login(credentials: PSEGCredentials):
 async def get_usage_data(credentials: PSEGCredentials):
     scraper = PSEGScraper()
     try:
-        print("Attempting memory-optimized Selenium authentication...")
+        print("Attempting memory-optimized Selenium authentication v4...")
         
         try:
             driver = scraper.setup_driver()
