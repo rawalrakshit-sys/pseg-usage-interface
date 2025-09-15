@@ -590,6 +590,51 @@ class PSEGScraper:
             print(f"Failed to extract usage data: {str(e)}")
             return []
     
+    def try_alternative_auth_endpoints(self, username: str, password: str) -> bool:
+        """Try alternative PSE&G authentication endpoints that might not require JavaScript"""
+        try:
+            print("Trying alternative authentication approach...")
+            
+            alternative_endpoints = [
+                "https://nj.pseg.com/api/auth/login",
+                "https://nj.myaccount.pseg.com/api/login", 
+                "https://nj.myaccount.pseg.com/identity/account/login",
+                "https://nj.pseg.com/myaccount/login"
+            ]
+            
+            for endpoint in alternative_endpoints:
+                print(f"Trying endpoint: {endpoint}")
+                try:
+                    auth_data = {
+                        'username': username,
+                        'password': password,
+                        'email': username,
+                        'identifier': username,
+                        'credentials.passcode': password,
+                        'grant_type': 'password'
+                    }
+                    
+                    response = self.session.post(endpoint, data=auth_data, timeout=10)
+                    print(f"Response status: {response.status_code}")
+                    
+                    if response.status_code == 200:
+                        response_text = response.text.lower()
+                        if any(success_indicator in response_text for success_indicator in 
+                               ['dashboard', 'myaccount', 'welcome', 'success', 'token']):
+                            print(f"Alternative authentication successful via {endpoint}")
+                            return True
+                            
+                except Exception as e:
+                    print(f"Endpoint {endpoint} failed: {e}")
+                    continue
+            
+            print("All alternative endpoints failed")
+            return False
+            
+        except Exception as e:
+            print(f"Alternative authentication failed: {e}")
+            return False
+    
     def close(self):
         if self.driver:
             self.driver.quit()
@@ -620,18 +665,17 @@ async def test_login(credentials: PSEGCredentials):
 async def get_usage_data(credentials: PSEGCredentials):
     scraper = PSEGScraper()
     try:
-        print("Attempting ultra-lightweight Selenium authentication v6 with minimal memory footprint...")
+        print("Attempting memory-efficient authentication without Selenium...")
         
-        try:
-            driver = scraper.setup_driver()
-            print("Ultra-lightweight Chrome driver initialized successfully")
-            login_success = scraper.login(credentials.username, credentials.password)
-            print(f"Selenium authentication result: {login_success}")
-        except Exception as selenium_error:
-            print(f"Ultra-lightweight Selenium failed: {selenium_error}")
-            print("Attempting requests-based OAuth2 flow as fallback...")
-            login_success = scraper.login_with_requests(credentials.username, credentials.password)
-            print(f"Requests-based authentication result: {login_success}")
+        print("Using requests-only OAuth2 flow optimized for JavaScript-rendered forms...")
+        login_success = scraper.login_with_requests(credentials.username, credentials.password)
+        print(f"Requests-based authentication result: {login_success}")
+        
+        if not login_success:
+            print("Attempting alternative authentication endpoints...")
+            alternative_success = scraper.try_alternative_auth_endpoints(credentials.username, credentials.password)
+            print(f"Alternative authentication result: {alternative_success}")
+            login_success = alternative_success
         
         if not login_success:
             print("Authentication failed - either invalid credentials or memory constraints")
