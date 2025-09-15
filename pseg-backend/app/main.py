@@ -113,10 +113,11 @@ class PSEGScraper:
             print("Step 3: Successfully loaded OAuth login page")
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            form = soup.find('form')
-            if not form or not hasattr(form, 'get'):
+            forms = soup.find_all('form')
+            if not forms:
                 print("No login form found on OAuth page")
                 return False
+            form = forms[0]
             
             form_action = str(form.get('action') or '')
             if isinstance(form_action, str) and form_action.startswith('/'):
@@ -126,7 +127,7 @@ class PSEGScraper:
                 form_action = response.url.rsplit('/', 1)[0] + '/' + form_action
             
             form_data = {}
-            for hidden_input in form.find_all('input', type='hidden'):
+            for hidden_input in form.find_all('input', {'type': 'hidden'}):
                 name = hidden_input.get('name')
                 value = hidden_input.get('value', '')
                 if name:
@@ -157,10 +158,11 @@ class PSEGScraper:
             print("Step 5: Looking for password form...")
             
             soup = BeautifulSoup(response.text, 'html.parser')
-            password_form = soup.find('form')
-            if not password_form or not hasattr(password_form, 'get'):
+            password_forms = soup.find_all('form')
+            if not password_forms:
                 print("No password form found")
                 return False
+            password_form = password_forms[0]
             
             password_action = str(password_form.get('action') or '')
             if isinstance(password_action, str) and password_action.startswith('/'):
@@ -170,7 +172,7 @@ class PSEGScraper:
                 password_action = response.url.rsplit('/', 1)[0] + '/' + password_action
             
             password_data = {}
-            for hidden_input in password_form.find_all('input', type='hidden'):
+            for hidden_input in password_form.find_all('input', {'type': 'hidden'}):
                 name = hidden_input.get('name')
                 value = hidden_input.get('value', '')
                 if name:
