@@ -135,9 +135,14 @@ class PSEGScraper:
             
             username_field = form.find('input', {'name': 'identifier'}) or form.find('input', {'name': 'username'})
             if username_field:
-                form_data['identifier'] = username
+                field_name = username_field.get('name')
+                form_data[field_name] = username
+                print(f"Found username field: {field_name}")
             else:
                 print("Could not find username field in login form")
+                print("Available input fields:")
+                for inp in form.find_all('input'):
+                    print(f"  - name: {inp.get('name')}, type: {inp.get('type')}")
                 return False
             
             print("Step 4: Submitting username...")
