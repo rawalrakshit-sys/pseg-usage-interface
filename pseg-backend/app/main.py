@@ -57,7 +57,7 @@ class PSEGScraper:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1280,720")
+        chrome_options.add_argument("--window-size=800,600")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
         chrome_options.add_argument("--disable-images")
@@ -69,8 +69,14 @@ class PSEGScraper:
         chrome_options.add_argument("--disable-default-apps")
         chrome_options.add_argument("--disable-sync")
         chrome_options.add_argument("--memory-pressure-off")
-        chrome_options.add_argument("--max_old_space_size=256")
+        chrome_options.add_argument("--max_old_space_size=128")
         chrome_options.add_argument("--aggressive-cache-discard")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument("--disable-logging")
+        chrome_options.add_argument("--disable-background-networking")
+        chrome_options.add_argument("--disable-component-extensions-with-background-pages")
+        chrome_options.add_argument("--disable-ipc-flooding-protection")
+        chrome_options.add_argument("--disable-dev-tools")
         chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         
         self.driver = webdriver.Chrome(options=chrome_options)
@@ -152,6 +158,10 @@ class PSEGScraper:
     
     def login(self, username: str, password: str) -> bool:
         try:
+            if not self.driver:
+                print("Driver not initialized, setting up...")
+                self.setup_driver()
+            
             print("Starting Selenium-based OAuth2 login...")
             self.driver.get("https://nj.pseg.com")
             
@@ -333,15 +343,23 @@ async def test_login(credentials: PSEGCredentials):
 async def get_usage_data(credentials: PSEGCredentials):
     scraper = PSEGScraper()
     try:
-        print("Attempting lightweight requests-based login (v3)...")
-        login_success = scraper.login_with_requests(credentials.username, credentials.password)
+        print("Attempting memory-optimized Selenium authentication...")
+        
+        try:
+            driver = scraper.setup_driver()
+            print("Chrome driver initialized successfully with aggressive memory optimization")
+            login_success = scraper.login(credentials.username, credentials.password)
+        except Exception as selenium_error:
+            print(f"Selenium initialization failed due to memory constraints: {selenium_error}")
+            print("Falling back to lightweight authentication check...")
+            login_success = scraper.login_with_requests(credentials.username, credentials.password)
         
         if not login_success:
-            print("Lightweight login failed - memory constraints prevent Selenium usage")
+            print("Authentication failed - either invalid credentials or memory constraints")
             return PSEGUsageResponse(
                 success=False,
                 data=[],
-                message="Authentication service temporarily unavailable due to system constraints. Please try the sample data or contact support.",
+                message="Authentication failed. Please check your credentials or try again later due to system constraints.",
                 total_usage=0.0,
                 average_monthly_usage=0.0
             )
