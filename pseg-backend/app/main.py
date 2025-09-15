@@ -638,7 +638,7 @@ class PSEGScraper:
     def extract_usage_data_with_requests(self) -> List[UsageData]:
         """Extract usage data using requests-only approach after successful authentication"""
         try:
-            print("Attempting to extract usage data using authenticated session...")
+            print("Attempting to extract usage data using authenticated session with enhanced API discovery...")
             
             usage_endpoints = [
                 "https://nj.myaccount.pseg.com/api/usage/history",
