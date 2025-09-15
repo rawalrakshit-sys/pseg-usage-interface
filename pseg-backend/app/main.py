@@ -57,7 +57,7 @@ class PSEGScraper:
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=800,600")
+        chrome_options.add_argument("--window-size=1280,720")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
         chrome_options.add_argument("--disable-images")
@@ -66,9 +66,11 @@ class PSEGScraper:
         chrome_options.add_argument("--disable-background-timer-throttling")
         chrome_options.add_argument("--disable-renderer-backgrounding")
         chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+        chrome_options.add_argument("--disable-default-apps")
+        chrome_options.add_argument("--disable-sync")
         chrome_options.add_argument("--memory-pressure-off")
         chrome_options.add_argument("--max_old_space_size=256")
-        chrome_options.add_argument("--single-process")
+        chrome_options.add_argument("--aggressive-cache-discard")
         chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         
         self.driver = webdriver.Chrome(options=chrome_options)
@@ -222,34 +224,43 @@ class PSEGScraper:
     
     def login(self, username: str, password: str) -> bool:
         try:
+            print("Starting Selenium-based OAuth2 login...")
             self.driver.get("https://nj.pseg.com")
             
+            print("Looking for login button...")
             login_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'LOGIN') or contains(text(), 'Log In')]"))
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'LOGIN') or contains(text(), 'Log In')] | //a[contains(text(), 'LOGIN') or contains(text(), 'Log In')]"))
             )
             login_button.click()
+            print("Clicked login button, waiting for OAuth page...")
             
+            print("Looking for username field...")
             username_field = WebDriverWait(self.driver, 15).until(
                 EC.presence_of_element_located((By.NAME, "identifier"))
             )
             username_field.clear()
             username_field.send_keys(username)
+            print("Entered username, looking for Next button...")
             
             next_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Next']"))
+                EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Next'] | //button[contains(text(), 'Next')]"))
             )
             next_button.click()
+            print("Clicked Next, waiting for password page...")
             
+            print("Looking for password field...")
             password_field = WebDriverWait(self.driver, 15).until(
                 EC.presence_of_element_located((By.NAME, "credentials.passcode"))
             )
             password_field.clear()
             password_field.send_keys(password)
+            print("Entered password, looking for Sign In button...")
             
             signin_button = WebDriverWait(self.driver, 10).until(
-                EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Sign In']"))
+                EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Sign In'] | //button[contains(text(), 'Sign In')]"))
             )
             signin_button.click()
+            print("Clicked Sign In, waiting for successful login...")
             
             WebDriverWait(self.driver, 20).until(
                 EC.any_of(
@@ -260,10 +271,11 @@ class PSEGScraper:
                 )
             )
             
+            print("Login successful!")
             return True
             
         except (TimeoutException, NoSuchElementException) as e:
-            print(f"Login failed: {str(e)}")
+            print(f"Selenium login failed: {str(e)}")
             return False
     
     def navigate_to_usage_data(self) -> bool:
@@ -393,12 +405,13 @@ async def test_login(credentials: PSEGCredentials):
 async def get_usage_data(credentials: PSEGCredentials):
     scraper = PSEGScraper()
     try:
-        print("Attempting requests-based login...")
-        login_success = scraper.login_with_requests(credentials.username, credentials.password)
+        print("Attempting Selenium-based login with memory optimization...")
+        scraper.setup_driver()
+        login_success = scraper.login(credentials.username, credentials.password)
         
         if not login_success:
-            print("Requests-based login failed - Selenium fallback temporarily disabled for debugging")
-            print("This should prevent memory issues while we debug the requests method")
+            print("Selenium login failed")
+            scraper.close()
             return PSEGUsageResponse(
                 success=False,
                 data=[],
