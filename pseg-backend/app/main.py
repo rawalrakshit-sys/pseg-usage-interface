@@ -122,7 +122,7 @@ class PSEGScraper:
             
             form_data = {}
             
-            for hidden_input in form.find_all('input', type='hidden'):
+            for hidden_input in form.find_all('input', {'type': 'hidden'}):
                 name = hidden_input.get('name')
                 value = hidden_input.get('value', '')
                 if name:
@@ -166,7 +166,7 @@ class PSEGScraper:
             
             password_data = {}
             
-            for hidden_input in password_form.find_all('input', type='hidden'):
+            for hidden_input in password_form.find_all('input', {'type': 'hidden'}):
                 name = hidden_input.get('name')
                 value = hidden_input.get('value', '')
                 if name:
@@ -378,7 +378,12 @@ async def get_usage_data(credentials: PSEGCredentials):
     try:
         scraper.setup_driver()
         
-        login_success = scraper.login(credentials.username, credentials.password)
+        login_success = scraper.login_with_requests(credentials.username, credentials.password)
+        
+        if not login_success:
+            print("Requests-based login failed, falling back to Selenium...")
+            scraper.setup_driver()
+            login_success = scraper.login(credentials.username, credentials.password)
         if not login_success:
             return PSEGUsageResponse(
                 success=False,
