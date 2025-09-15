@@ -248,8 +248,8 @@ async def healthz():
 async def test_login(credentials: PSEGCredentials):
     scraper = PSEGScraper()
     try:
-        scraper.setup_driver()
-        success = scraper.login(credentials.username, credentials.password)
+        print("Testing login with requests method only...")
+        success = scraper.login_with_requests(credentials.username, credentials.password)
         
         if success:
             return {"success": True, "message": "Login successful"}
@@ -272,7 +272,6 @@ async def get_usage_data(credentials: PSEGCredentials):
         if not login_success:
             print("Requests-based login failed - Selenium fallback temporarily disabled for debugging")
             print("This should prevent memory issues while we debug the requests method")
-        if not login_success:
             return PSEGUsageResponse(
                 success=False,
                 data=[],
