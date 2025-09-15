@@ -405,7 +405,7 @@ async def test_login(credentials: PSEGCredentials):
 async def get_usage_data(credentials: PSEGCredentials):
     scraper = PSEGScraper()
     try:
-        print("Attempting Selenium-based login with memory optimization...")
+        print("Attempting Selenium-based login with memory optimization (v2)...")
         scraper.setup_driver()
         login_success = scraper.login(credentials.username, credentials.password)
         
