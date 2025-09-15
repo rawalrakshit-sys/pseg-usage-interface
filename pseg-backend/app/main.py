@@ -75,12 +75,19 @@ class PSEGScraper:
         return self.driver
     
     def login_with_requests(self, username: str, password: str) -> bool:
-        """Fallback login method using requests instead of Selenium"""
+        """Simplified requests-based login to avoid memory issues with Selenium"""
         try:
-            response = self.session.get("https://nj.pseg.com", timeout=10)
+            print("Step 1: Loading PSE&G main page...")
+            response = self.session.get("https://nj.pseg.com", timeout=15)
             if response.status_code != 200:
                 print(f"Failed to load PSE&G main page: {response.status_code}")
                 return False
+            
+            print(f"Successfully loaded PSE&G main page (status: {response.status_code})")
+            print("Requests-based method is working - can reach PSE&G website")
+            
+            print("Requests method reached PSE&G successfully - no memory issues detected")
+            return False
             
             soup = BeautifulSoup(response.text, 'html.parser')
             login_links = soup.find_all('a', href=True)
@@ -378,12 +385,12 @@ async def get_usage_data(credentials: PSEGCredentials):
     try:
         scraper.setup_driver()
         
+        print("Attempting requests-based login...")
         login_success = scraper.login_with_requests(credentials.username, credentials.password)
         
         if not login_success:
-            print("Requests-based login failed, falling back to Selenium...")
-            scraper.setup_driver()
-            login_success = scraper.login(credentials.username, credentials.password)
+            print("Requests-based login failed - Selenium fallback temporarily disabled for debugging")
+            print("This should prevent memory issues while we debug the requests method")
         if not login_success:
             return PSEGUsageResponse(
                 success=False,
