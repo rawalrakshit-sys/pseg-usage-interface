@@ -53,6 +53,11 @@ class PSEGScraper:
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
         chrome_options.add_argument("--window-size=1920,1080")
+        chrome_options.add_argument("--disable-extensions")
+        chrome_options.add_argument("--disable-plugins")
+        chrome_options.add_argument("--disable-images")
+        chrome_options.add_argument("--memory-pressure-off")
+        chrome_options.add_argument("--max_old_space_size=512")
         chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         
         self.driver = webdriver.Chrome(options=chrome_options)
@@ -67,21 +72,34 @@ class PSEGScraper:
             )
             login_button.click()
             
-            username_field = WebDriverWait(self.driver, 10).until(
-                EC.presence_of_element_located((By.ID, "username"))
+            username_field = WebDriverWait(self.driver, 15).until(
+                EC.presence_of_element_located((By.NAME, "identifier"))
             )
+            username_field.clear()
             username_field.send_keys(username)
             
-            password_field = self.driver.find_element(By.ID, "password")
+            next_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Next']"))
+            )
+            next_button.click()
+            
+            password_field = WebDriverWait(self.driver, 15).until(
+                EC.presence_of_element_located((By.NAME, "credentials.passcode"))
+            )
+            password_field.clear()
             password_field.send_keys(password)
             
-            submit_button = self.driver.find_element(By.XPATH, "//button[@type='submit' or contains(text(), 'Sign In') or contains(text(), 'Login')]")
-            submit_button.click()
+            signin_button = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Sign In']"))
+            )
+            signin_button.click()
             
-            WebDriverWait(self.driver, 15).until(
+            WebDriverWait(self.driver, 20).until(
                 EC.any_of(
+                    EC.url_contains("myaccount.pseg.com"),
                     EC.presence_of_element_located((By.XPATH, "//a[contains(text(), 'My Account') or contains(text(), 'Usage') or contains(text(), 'Bill')]")),
-                    EC.presence_of_element_located((By.CLASS_NAME, "account-dashboard"))
+                    EC.presence_of_element_located((By.CLASS_NAME, "account-dashboard")),
+                    EC.presence_of_element_located((By.XPATH, "//div[contains(@class, 'dashboard') or contains(@class, 'account')]"))
                 )
             )
             
