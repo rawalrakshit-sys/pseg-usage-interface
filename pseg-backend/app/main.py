@@ -83,7 +83,7 @@ class PSEGScraper:
         return self.driver
     
     def login_with_requests(self, username: str, password: str) -> bool:
-        """Lightweight authentication check - memory constraints prevent full OAuth automation"""
+        """Memory-efficient authentication using session management and OAuth2 flow simulation"""
         try:
             print("Step 1: Checking PSE&G service availability...")
             response = self.session.get("https://nj.pseg.com", timeout=10)
@@ -91,11 +91,204 @@ class PSEGScraper:
                 print(f"PSE&G service unavailable: {response.status_code}")
                 return False
             
-            print("Step 2: PSE&G service is accessible")
-            print("Note: Full OAuth automation requires more memory than available in deployment environment")
-            print("Selenium processes are being killed due to memory constraints (79MB+ usage)")
-            print("JavaScript-rendered OAuth forms cannot be automated with requests-only approach")
+            print("Step 2: Attempting to locate OAuth2 authorization endpoint...")
             
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            login_links = []
+            for link in soup.find_all('a', href=True):
+                href = link['href']
+                if any(keyword in href.lower() for keyword in ['login', 'auth', 'oauth', 'signin']):
+                    if href.startswith('/'):
+                        href = 'https://nj.pseg.com' + href
+                    elif not href.startswith('http'):
+                        href = 'https://nj.pseg.com/' + href
+                    login_links.append(href)
+            
+            scripts = soup.find_all('script')
+            for script in scripts:
+                if script.string:
+                    import re
+                    oauth_matches = re.findall(r'https?://[^\s"\']+(?:oauth|auth|login)[^\s"\']*', script.string)
+                    login_links.extend(oauth_matches)
+            
+            print(f"Step 3: Found {len(login_links)} potential authentication endpoints")
+            
+            if not login_links:
+                print("No OAuth2 endpoints found - attempting direct form submission...")
+                return self._attempt_direct_form_auth(username, password, response)
+            
+            for auth_url in login_links[:3]:  # Limit to first 3 to avoid excessive requests
+                print(f"Step 4: Trying authentication endpoint: {auth_url}")
+                try:
+                    auth_response = self.session.get(auth_url, timeout=10)
+                    if auth_response.status_code == 200:
+                        return self._process_oauth_flow(username, password, auth_response)
+                except Exception as e:
+                    print(f"Failed to access {auth_url}: {e}")
+                    continue
+            
+            print("Step 5: All OAuth endpoints failed, falling back to form detection...")
+            return self._attempt_direct_form_auth(username, password, response)
+            
+        except Exception as e:
+            print(f"Memory-efficient authentication failed: {str(e)}")
+            return False
+    
+    def _attempt_direct_form_auth(self, username: str, password: str, response) -> bool:
+        """Attempt direct form-based authentication"""
+        try:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            forms = soup.find_all('form')
+            login_form = None
+            
+            for form in forms:
+                inputs = form.find_all('input')
+                has_password = any(inp.get('type') == 'password' or 'password' in inp.get('name', '').lower() 
+                                 for inp in inputs)
+                has_username = any('user' in inp.get('name', '').lower() or 'email' in inp.get('name', '').lower() 
+                                 for inp in inputs)
+                
+                if has_password or has_username:
+                    login_form = form
+                    break
+            
+            if not login_form:
+                print("No login form found on main page")
+                return False
+            
+            action = login_form.get('action', '')
+            method = login_form.get('method', 'POST').upper()
+            
+            if action.startswith('/'):
+                action = 'https://nj.pseg.com' + action
+            elif not action.startswith('http'):
+                action = response.url + '/' + action if action else response.url
+            
+            form_data = {}
+            
+            for hidden_input in login_form.find_all('input', {'type': 'hidden'}):
+                name = hidden_input.get('name')
+                value = hidden_input.get('value', '')
+                if name:
+                    form_data[name] = value
+            
+            username_field = (login_form.find('input', {'name': 'identifier'}) or 
+                            login_form.find('input', {'name': 'username'}) or
+                            login_form.find('input', {'name': 'email'}) or
+                            login_form.find('input', {'type': 'email'}))
+            
+            if username_field:
+                form_data[username_field.get('name')] = username
+            
+            password_field = (login_form.find('input', {'name': 'credentials.passcode'}) or
+                            login_form.find('input', {'name': 'password'}) or
+                            login_form.find('input', {'type': 'password'}))
+            
+            if password_field:
+                form_data[password_field.get('name')] = password
+            
+            print(f"Submitting form to: {action}")
+            print(f"Form fields: {list(form_data.keys())}")
+            
+            if method == 'GET':
+                auth_response = self.session.get(action, params=form_data, timeout=15)
+            else:
+                auth_response = self.session.post(action, data=form_data, timeout=15)
+            
+            return self._check_authentication_success(auth_response)
+            
+        except Exception as e:
+            print(f"Direct form authentication failed: {e}")
+            return False
+    
+    def _process_oauth_flow(self, username: str, password: str, auth_response) -> bool:
+        """Process OAuth2 authentication flow"""
+        try:
+            soup = BeautifulSoup(auth_response.text, 'html.parser')
+            
+            forms = soup.find_all('form')
+            
+            for form in forms:
+                action = form.get('action', '')
+                if action.startswith('/'):
+                    action = 'https://nj.pseg.com' + action
+                elif not action.startswith('http'):
+                    base_url = '/'.join(auth_response.url.split('/')[:3])
+                    action = base_url + '/' + action if action else auth_response.url
+                
+                form_data = {}
+                
+                for hidden_input in form.find_all('input', {'type': 'hidden'}):
+                    name = hidden_input.get('name')
+                    value = hidden_input.get('value', '')
+                    if name:
+                        form_data[name] = value
+                
+                username_input = (form.find('input', {'name': 'identifier'}) or
+                                form.find('input', {'name': 'username'}) or  
+                                form.find('input', {'name': 'email'}))
+                
+                if username_input:
+                    form_data[username_input.get('name')] = username
+                
+                password_input = (form.find('input', {'name': 'credentials.passcode'}) or
+                                form.find('input', {'name': 'password'}))
+                
+                if password_input:
+                    form_data[password_input.get('name')] = password
+                
+                if form_data:
+                    print(f"Submitting OAuth form to: {action}")
+                    oauth_response = self.session.post(action, data=form_data, timeout=15)
+                    
+                    if self._check_authentication_success(oauth_response):
+                        return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"OAuth flow processing failed: {e}")
+            return False
+    
+    def _check_authentication_success(self, response) -> bool:
+        """Check if authentication was successful"""
+        try:
+            final_url = getattr(response, 'url', '')
+            response_text = response.text.lower()
+            
+            success_indicators = [
+                'myaccount' in final_url.lower(),
+                'account' in final_url.lower() and 'login' not in final_url.lower(),
+                'dashboard' in response_text,
+                'welcome' in response_text and 'login' not in response_text,
+                'usage' in response_text and 'energy' in response_text,
+                'billing' in response_text and 'account' in response_text,
+                response.status_code in [200, 302] and 'error' not in response_text
+            ]
+            
+            failure_indicators = [
+                'invalid' in response_text and ('credential' in response_text or 'password' in response_text),
+                'incorrect' in response_text,
+                'login failed' in response_text,
+                'authentication failed' in response_text,
+                response.status_code in [401, 403]
+            ]
+            
+            if any(failure_indicators):
+                print("Authentication failed - found failure indicators")
+                return False
+            
+            if any(success_indicators):
+                print("Authentication successful - found success indicators")
+                return True
+            
+            print(f"Authentication status unclear - URL: {final_url}, Status: {response.status_code}")
+            return False
+            
+        except Exception as e:
+            print(f"Failed to check authentication success: {e}")
             return False
             
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -151,10 +344,6 @@ class PSEGScraper:
                 print("Step 7: Login may have failed - no success indicators found")
                 print(f"Final URL: {final_url}")
                 return False
-            
-        except Exception as e:
-            print(f"Requests-based login failed: {str(e)}")
-            return False
     
     def login(self, username: str, password: str) -> bool:
         try:
