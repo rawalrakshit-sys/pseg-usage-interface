@@ -654,19 +654,27 @@ class PSEGScraper:
                     print(f"Usage endpoint response status: {response.status_code}")
                     
                     if response.status_code == 200:
+                        print(f"Response content-type: {response.headers.get('content-type', 'unknown')}")
+                        print(f"Response length: {len(response.text)} characters")
+                        print(f"Response preview: {response.text[:500]}...")
+                        
                         try:
                             data = response.json()
-                            if isinstance(data, dict) and ('usage' in data or 'data' in data or 'history' in data):
+                            print(f"Successfully parsed JSON with keys: {list(data.keys()) if isinstance(data, dict) else 'not a dict'}")
+                            if isinstance(data, dict) and ('usage' in data or 'data' in data or 'history' in data or 'bills' in data or 'consumption' in data):
                                 print(f"Found usage data in JSON response from {endpoint}")
                                 return self._parse_usage_json(data)
-                        except:
-                            pass
+                        except Exception as json_error:
+                            print(f"JSON parsing failed: {json_error}")
                         
                         if 'html' in response.headers.get('content-type', '').lower():
+                            print("Attempting HTML parsing...")
                             usage_data = self._parse_usage_html(response.text)
                             if usage_data:
                                 print(f"Found usage data in HTML response from {endpoint}")
                                 return usage_data
+                            else:
+                                print("No usage data found in HTML content")
                                 
                 except Exception as e:
                     print(f"Usage endpoint {endpoint} failed: {e}")
@@ -682,7 +690,70 @@ class PSEGScraper:
     def _parse_usage_json(self, data: dict) -> List[UsageData]:
         """Parse usage data from JSON response"""
         usage_data = []
+        print(f"Parsing JSON data structure: {data}")
+        
+        possible_data_keys = ['usage', 'data', 'history', 'bills', 'consumption', 'records', 'items']
+        
+        for key in possible_data_keys:
+            if key in data:
+                print(f"Found data under key '{key}': {data[key]}")
+                items = data[key]
+                if isinstance(items, list):
+                    for item in items:
+                        if isinstance(item, dict):
+                            usage_item = self._extract_usage_from_item(item)
+                            if usage_item:
+                                usage_data.append(usage_item)
+                break
+        
+        print(f"Extracted {len(usage_data)} usage records from JSON")
         return usage_data
+    
+    def _extract_usage_from_item(self, item: dict) -> UsageData:
+        """Extract usage data from a single JSON item"""
+        try:
+            print(f"Processing item: {item}")
+            
+            date_value = None
+            for date_key in ['date', 'period', 'month', 'billing_date', 'service_date', 'read_date']:
+                if date_key in item:
+                    date_value = item[date_key]
+                    break
+            
+            usage_value = None
+            for usage_key in ['usage', 'kwh', 'consumption', 'amount', 'quantity', 'usage_kwh']:
+                if usage_key in item:
+                    usage_value = item[usage_key]
+                    break
+            
+            cost_value = None
+            for cost_key in ['cost', 'amount', 'total', 'charge', 'bill_amount']:
+                if cost_key in item:
+                    cost_value = item[cost_key]
+                    break
+            
+            if date_value and usage_value:
+                if isinstance(usage_value, (int, float)):
+                    usage_kwh = float(usage_value)
+                elif isinstance(usage_value, str):
+                    import re
+                    usage_match = re.search(r'(\d+\.?\d*)', usage_value.replace(',', ''))
+                    usage_kwh = float(usage_match.group(1)) if usage_match else None
+                else:
+                    usage_kwh = None
+                
+                if usage_kwh is not None:
+                    return UsageData(
+                        date=str(date_value),
+                        usage_kwh=usage_kwh,
+                        cost=float(cost_value) if cost_value and isinstance(cost_value, (int, float)) else None,
+                        billing_period=str(date_value)
+                    )
+                    
+        except Exception as e:
+            print(f"Error extracting usage from item: {e}")
+            
+        return None
     
     def _parse_usage_html(self, html: str) -> List[UsageData]:
         """Parse usage data from HTML response"""
