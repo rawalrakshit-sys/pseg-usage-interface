@@ -686,17 +686,40 @@ class PSEGScraper:
                                 api_endpoints = self._extract_api_endpoints_from_html(response.text)
                                 if api_endpoints:
                                     print(f"Found potential API endpoints in HTML: {api_endpoints}")
-                                    for api_endpoint in api_endpoints[:3]:  # Try first 3
+                                    for api_endpoint in api_endpoints[:5]:  # Try first 5
                                         try:
                                             api_response = self.session.get(api_endpoint, timeout=10)
-                                            print(f"API endpoint {api_endpoint} status: {api_response.status_code}")
-                                            if api_response.status_code == 200 and 'json' in api_response.headers.get('content-type', ''):
-                                                api_data = api_response.json()
-                                                print(f"Found JSON data from {api_endpoint}: {list(api_data.keys()) if isinstance(api_data, dict) else 'not a dict'}")
-                                                if isinstance(api_data, dict):
-                                                    parsed_data = self._parse_usage_json(api_data)
-                                                    if parsed_data:
-                                                        return parsed_data
+                                            print(f"API endpoint {api_endpoint} GET status: {api_response.status_code}")
+                                            
+                                            if api_response.status_code == 200:
+                                                content_type = api_response.headers.get('content-type', '')
+                                                if 'json' in content_type:
+                                                    api_data = api_response.json()
+                                                    print(f"Found JSON data from {api_endpoint}: {list(api_data.keys()) if isinstance(api_data, dict) else 'not a dict'}")
+                                                    if isinstance(api_data, dict):
+                                                        parsed_data = self._parse_usage_json(api_data)
+                                                        if parsed_data:
+                                                            return parsed_data
+                                                else:
+                                                    print(f"API endpoint {api_endpoint} returned {content_type}, not JSON")
+                                            
+                                            if api_response.status_code != 200:
+                                                headers = {
+                                                    'Content-Type': 'application/json',
+                                                    'Accept': 'application/json',
+                                                    'X-Requested-With': 'XMLHttpRequest'
+                                                }
+                                                post_response = self.session.post(api_endpoint, headers=headers, json={}, timeout=10)
+                                                print(f"API endpoint {api_endpoint} POST status: {post_response.status_code}")
+                                                
+                                                if post_response.status_code == 200 and 'json' in post_response.headers.get('content-type', ''):
+                                                    post_data = post_response.json()
+                                                    print(f"Found JSON data from POST {api_endpoint}: {list(post_data.keys()) if isinstance(post_data, dict) else 'not a dict'}")
+                                                    if isinstance(post_data, dict):
+                                                        parsed_data = self._parse_usage_json(post_data)
+                                                        if parsed_data:
+                                                            return parsed_data
+                                                            
                                         except Exception as api_error:
                                             print(f"API endpoint {api_endpoint} failed: {api_error}")
                                 
@@ -787,12 +810,23 @@ class PSEGScraper:
         patterns = [
             r'["\']([^"\']*api[^"\']*usage[^"\']*)["\']',
             r'["\']([^"\']*usage[^"\']*api[^"\']*)["\']',
+            r'["\']([^"\']*api[^"\']*billing[^"\']*)["\']',
+            r'["\']([^"\']*api[^"\']*consumption[^"\']*)["\']',
+            r'["\']([^"\']*api[^"\']*energy[^"\']*)["\']',
+            r'["\']([^"\']*api[^"\']*meter[^"\']*)["\']',
+            r'["\']([^"\']*api[^"\']*history[^"\']*)["\']',
+            r'["\']([^"\']*api[^"\']*dashboard[^"\']*)["\']',
             r'["\']([^"\']*\/api\/[^"\']*)["\']',
             r'["\']([^"\']*\/services\/[^"\']*)["\']',
             r'["\']([^"\']*\/rest\/[^"\']*)["\']',
             r'["\']([^"\']*\/webapi\/[^"\']*)["\']',
             r'url\s*:\s*["\']([^"\']*api[^"\']*)["\']',
-            r'endpoint\s*:\s*["\']([^"\']*)["\']'
+            r'endpoint\s*:\s*["\']([^"\']*)["\']',
+            r'apiUrl\s*[=:]\s*["\']([^"\']*)["\']',
+            r'baseUrl\s*[=:]\s*["\']([^"\']*)["\']',
+            r'fetch\s*\(\s*["\']([^"\']*api[^"\']*)["\']',
+            r'ajax\s*\(\s*["\']([^"\']*api[^"\']*)["\']',
+            r'\$\.get\s*\(\s*["\']([^"\']*api[^"\']*)["\']'
         ]
         
         for pattern in patterns:
@@ -805,7 +839,11 @@ class PSEGScraper:
                 else:
                     full_url = f"https://nj.myaccount.pseg.com/{match}"
                 
-                if any(keyword in full_url.lower() for keyword in ['usage', 'billing', 'account', 'customer', 'consumption']):
+                # Filter for likely usage-related endpoints
+                if any(keyword in full_url.lower() for keyword in ['usage', 'billing', 'account', 'customer', 'consumption', 'energy', 'meter', 'history', 'dashboard', 'data']):
+                    if full_url not in api_endpoints:
+                        api_endpoints.append(full_url)
+                elif '/api/' in full_url.lower() and not any(exclude in full_url.lower() for exclude in ['header', 'footer', 'nav', 'menu', 'auth', 'login']):
                     if full_url not in api_endpoints:
                         api_endpoints.append(full_url)
         
