@@ -112,7 +112,7 @@ class PSEGScraper:
                 print("No login form found on OAuth page")
                 return False
             
-            form_action = form.get('action') if form and hasattr(form, 'get') else ''
+            form_action = form.get('action') if form and hasattr(form, 'get') and form.name == 'form' else ''
             if isinstance(form_action, str) and form_action.startswith('/'):
                 form_action = f"https://nj.pseg.com{form_action}"
             elif isinstance(form_action, str) and not form_action.startswith('http'):
@@ -122,7 +122,7 @@ class PSEGScraper:
             
             form_data = {}
             
-            for hidden_input in form.find_all('input', {'type': 'hidden'}):
+            for hidden_input in form.find_all('input', type='hidden'):
                 name = hidden_input.get('name')
                 value = hidden_input.get('value', '')
                 if name:
@@ -155,7 +155,7 @@ class PSEGScraper:
                 print("No password form found")
                 return False
             
-            password_action = password_form.get('action') if password_form and hasattr(password_form, 'get') else ''
+            password_action = password_form.get('action') if password_form and hasattr(password_form, 'get') and password_form.name == 'form' else ''
             if isinstance(password_action, str) and password_action.startswith('/'):
                 password_action = f"https://nj.pseg.com{password_action}"
             elif isinstance(password_action, str) and not password_action.startswith('http'):
@@ -166,7 +166,7 @@ class PSEGScraper:
             
             password_data = {}
             
-            for hidden_input in password_form.find_all('input', {'type': 'hidden'}):
+            for hidden_input in password_form.find_all('input', type='hidden'):
                 name = hidden_input.get('name')
                 value = hidden_input.get('value', '')
                 if name:
