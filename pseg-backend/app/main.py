@@ -75,7 +75,7 @@ class PSEGScraper:
         return self.driver
     
     def login_with_requests(self, username: str, password: str) -> bool:
-        """Simplified requests-based login to avoid memory issues with Selenium"""
+        """Requests-based login to handle PSE&G's OAuth2 authentication flow"""
         try:
             print("Step 1: Loading PSE&G main page...")
             response = self.session.get("https://nj.pseg.com", timeout=15)
@@ -84,10 +84,130 @@ class PSEGScraper:
                 return False
             
             print(f"Successfully loaded PSE&G main page (status: {response.status_code})")
-            print("Requests-based method is working - can reach PSE&G website")
             
-            print("Requests method reached PSE&G successfully - no memory issues detected")
-            return False
+            soup = BeautifulSoup(response.text, 'html.parser')
+            login_links = soup.find_all('a', href=True)
+            oauth_url = None
+            
+            for link in login_links:
+                href = link.get('href', '')
+                text = link.get_text(strip=True).lower()
+                if ('login' in text or 'log in' in text or 'sign in' in text) and href:
+                    if href.startswith('http'):
+                        oauth_url = href
+                    elif href.startswith('/'):
+                        oauth_url = f"https://nj.pseg.com{href}"
+                    break
+            
+            if not oauth_url:
+                print("Could not find login URL on main page")
+                return False
+            
+            print(f"Step 2: Found login URL: {oauth_url}")
+            
+            response = self.session.get(oauth_url, timeout=15)
+            if response.status_code != 200:
+                print(f"Failed to load OAuth login page: {response.status_code}")
+                return False
+            
+            print("Step 3: Successfully loaded OAuth login page")
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            form = soup.find('form')
+            if not form or not hasattr(form, 'get'):
+                print("No login form found on OAuth page")
+                return False
+            
+            form_action = str(form.get('action') or '')
+            if isinstance(form_action, str) and form_action.startswith('/'):
+                base_url = '/'.join(response.url.split('/')[:3])
+                form_action = base_url + form_action
+            elif isinstance(form_action, str) and not form_action.startswith('http'):
+                form_action = response.url.rsplit('/', 1)[0] + '/' + form_action
+            
+            form_data = {}
+            for hidden_input in form.find_all('input', type='hidden'):
+                name = hidden_input.get('name')
+                value = hidden_input.get('value', '')
+                if name:
+                    form_data[name] = value
+            
+            username_field = form.find('input', {'name': 'identifier'}) or form.find('input', {'name': 'username'})
+            if username_field:
+                form_data['identifier'] = username
+            else:
+                print("Could not find username field in login form")
+                return False
+            
+            print("Step 4: Submitting username...")
+            
+            response = self.session.post(form_action, data=form_data, timeout=15)
+            if response.status_code not in [200, 302]:
+                print(f"Username submission failed: {response.status_code}")
+                return False
+            
+            if response.status_code == 302:
+                redirect_url = response.headers.get('Location')
+                if redirect_url:
+                    if redirect_url.startswith('/'):
+                        base_url = '/'.join(response.url.split('/')[:3])
+                        redirect_url = base_url + redirect_url
+                    response = self.session.get(redirect_url, timeout=15)
+            
+            print("Step 5: Looking for password form...")
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            password_form = soup.find('form')
+            if not password_form or not hasattr(password_form, 'get'):
+                print("No password form found")
+                return False
+            
+            password_action = str(password_form.get('action') or '')
+            if isinstance(password_action, str) and password_action.startswith('/'):
+                base_url = '/'.join(response.url.split('/')[:3])
+                password_action = base_url + password_action
+            elif isinstance(password_action, str) and not password_action.startswith('http'):
+                password_action = response.url.rsplit('/', 1)[0] + '/' + password_action
+            
+            password_data = {}
+            for hidden_input in password_form.find_all('input', type='hidden'):
+                name = hidden_input.get('name')
+                value = hidden_input.get('value', '')
+                if name:
+                    password_data[name] = value
+            
+            password_field = password_form.find('input', {'name': 'credentials.passcode'}) or password_form.find('input', {'name': 'password'})
+            if password_field:
+                password_data['credentials.passcode'] = password
+            else:
+                print("Could not find password field in form")
+                return False
+            
+            print("Step 6: Submitting password...")
+            
+            response = self.session.post(password_action, data=password_data, timeout=15)
+            if response.status_code not in [200, 302]:
+                print(f"Password submission failed: {response.status_code}")
+                return False
+            
+            final_url = response.url if hasattr(response, 'url') else ''
+            response_text = response.text.lower()
+            
+            success_indicators = [
+                'myaccount' in final_url.lower(),
+                'account' in final_url.lower(),
+                'dashboard' in response_text,
+                'welcome' in response_text,
+                'usage' in response_text and 'energy' in response_text
+            ]
+            
+            if any(success_indicators):
+                print("Step 7: Login successful - found success indicators")
+                return True
+            else:
+                print("Step 7: Login may have failed - no success indicators found")
+                print(f"Final URL: {final_url}")
+                return False
             
         except Exception as e:
             print(f"Requests-based login failed: {str(e)}")
