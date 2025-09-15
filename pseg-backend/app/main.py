@@ -52,12 +52,13 @@ class PSEGScraper:
         })
         
     def setup_driver(self):
+        """Setup ultra-lightweight Chrome driver for minimal memory usage"""
         chrome_options = Options()
         chrome_options.add_argument("--headless")
         chrome_options.add_argument("--no-sandbox")
         chrome_options.add_argument("--disable-dev-shm-usage")
         chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=800,600")
+        chrome_options.add_argument("--window-size=400,300")
         chrome_options.add_argument("--disable-extensions")
         chrome_options.add_argument("--disable-plugins")
         chrome_options.add_argument("--disable-images")
@@ -69,7 +70,7 @@ class PSEGScraper:
         chrome_options.add_argument("--disable-default-apps")
         chrome_options.add_argument("--disable-sync")
         chrome_options.add_argument("--memory-pressure-off")
-        chrome_options.add_argument("--max_old_space_size=128")
+        chrome_options.add_argument("--max_old_space_size=32")
         chrome_options.add_argument("--aggressive-cache-discard")
         chrome_options.add_argument("--disable-blink-features=AutomationControlled")
         chrome_options.add_argument("--disable-logging")
@@ -77,6 +78,28 @@ class PSEGScraper:
         chrome_options.add_argument("--disable-component-extensions-with-background-pages")
         chrome_options.add_argument("--disable-ipc-flooding-protection")
         chrome_options.add_argument("--disable-dev-tools")
+        chrome_options.add_argument("--single-process")
+        chrome_options.add_argument("--disable-site-isolation-trials")
+        chrome_options.add_argument("--disable-features=TranslateUI")
+        chrome_options.add_argument("--disable-features=BlinkGenPropertyTrees")
+        chrome_options.add_argument("--disable-threaded-animation")
+        chrome_options.add_argument("--disable-threaded-scrolling")
+        chrome_options.add_argument("--disable-in-process-stack-traces")
+        chrome_options.add_argument("--disable-histogram-customizer")
+        chrome_options.add_argument("--disable-gl-extensions")
+        chrome_options.add_argument("--disable-composited-antialiasing")
+        chrome_options.add_argument("--disable-canvas-aa")
+        chrome_options.add_argument("--disable-3d-apis")
+        chrome_options.add_argument("--disable-accelerated-2d-canvas")
+        chrome_options.add_argument("--disable-accelerated-jpeg-decoding")
+        chrome_options.add_argument("--disable-accelerated-mjpeg-decode")
+        chrome_options.add_argument("--disable-app-list-dismiss-on-blur")
+        chrome_options.add_argument("--disable-accelerated-video-decode")
+        chrome_options.add_argument("--disable-client-side-phishing-detection")
+        chrome_options.add_argument("--disable-crash-reporter")
+        chrome_options.add_argument("--disable-oopr-debug-crash-dump")
+        chrome_options.add_argument("--no-crash-upload")
+        chrome_options.add_argument("--disable-low-res-tiling")
         chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         
         self.driver = webdriver.Chrome(options=chrome_options)
@@ -597,16 +620,18 @@ async def test_login(credentials: PSEGCredentials):
 async def get_usage_data(credentials: PSEGCredentials):
     scraper = PSEGScraper()
     try:
-        print("Attempting memory-optimized Selenium authentication v5 with comprehensive OAuth2 flow...")
+        print("Attempting ultra-lightweight Selenium authentication v6 with minimal memory footprint...")
         
         try:
             driver = scraper.setup_driver()
-            print("Chrome driver initialized successfully with aggressive memory optimization")
+            print("Ultra-lightweight Chrome driver initialized successfully")
             login_success = scraper.login(credentials.username, credentials.password)
+            print(f"Selenium authentication result: {login_success}")
         except Exception as selenium_error:
-            print(f"Selenium initialization failed due to memory constraints: {selenium_error}")
-            print("Falling back to lightweight authentication check...")
+            print(f"Ultra-lightweight Selenium failed: {selenium_error}")
+            print("Attempting requests-based OAuth2 flow as fallback...")
             login_success = scraper.login_with_requests(credentials.username, credentials.password)
+            print(f"Requests-based authentication result: {login_success}")
         
         if not login_success:
             print("Authentication failed - either invalid credentials or memory constraints")
